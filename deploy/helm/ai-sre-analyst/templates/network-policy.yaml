@@ -1,0 +1,96 @@
+{{- if .Values.networkPolicy.enabled }}
+{{/*
+NetworkPolicy for the AI Analyst.
+
+Production hardening (#9 from the architecture review). The default
+Kubernetes posture is "every pod can talk to every pod" which is
+unacceptable for a service that holds an LLM API key and writes to
+a vector DB. We pin ingress and egress to the minimum needed.
+
+Ingress:
+  - Alertmanager pod (in the monitoring namespace) reaching the
+    /v1/alerts webhook.
+  - Prometheus scrape of /metrics.
+  - The dashboard pod for /v1/incidents and friends.
+
+Egress:
+  - Redis and Qdrant in our own namespace (sidecars).
+  - Kube DNS.
+  - Egress to the GKE control plane for K8s API calls (events,
+    deployments). 169.254.169.254 is the metadata server.
+  - Public Vertex AI / Cloud Logging / Firestore / Storage endpoints.
+    We can't lock these to specific IPs without a Private Service
+    Connect setup, which is documented as future work in the README.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-analyst
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai-analyst
+  policyTypes: [Ingress, Egress]
+
+  ingress:
+    # Alertmanager + Prometheus from the monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - { protocol: TCP, port: 8080 }
+    # Same-namespace traffic (dashboard ingest, future operator)
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 8080 }
+
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Redis + Qdrant (in-namespace)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - { protocol: TCP, port: 6379 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: qdrant
+      ports:
+        - { protocol: TCP, port: 6333 }
+        - { protocol: TCP, port: 6334 }
+    # K8s API server (live event/deployment lookups)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+      ports:
+        - { protocol: TCP, port: 443 }
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+{{/* Default-deny everything else in the ai-sre namespace. Belt-and-braces. */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-other
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}     # only same-namespace pods can talk to each other
+{{- end }}

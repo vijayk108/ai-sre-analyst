@@ -1,0 +1,16 @@
+apiVersion: v2
+name: ai-sre-analyst
+description: AI-powered SRE analyst for LLM serving infrastructure on GKE
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - sre
+  - genai
+  - observability
+  - kubernetes
+  - rag
+  - gemini
+home: https://github.com/your-org/ai-sre-analyst
+maintainers:
+  - name: Your Name

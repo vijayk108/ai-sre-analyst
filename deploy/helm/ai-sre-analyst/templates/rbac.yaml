@@ -1,0 +1,44 @@
+{{/*
+RBAC for the AI Analyst.
+
+The analyst pod needs read access to:
+  - events (core/v1 + events/v1)
+  - deployments and replicasets (apps/v1)
+  - pods (core/v1) — for log/state correlation in Phase 2
+
+Granted as a ClusterRole + ClusterRoleBindings limited to the inference
+namespaces so we don't hand out cluster-wide read.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ai-analyst-reader
+rules:
+  - apiGroups: [""]
+    resources: ["events", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+{{- range .Values.mockInference.workloads }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-analyst-reader
+  namespace: {{ .name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Values.aiAnalyst.serviceAccount.name }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ai-analyst-reader
+{{- end }}

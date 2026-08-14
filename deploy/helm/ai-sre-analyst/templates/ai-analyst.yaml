@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.aiAnalyst.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- toYaml .Values.aiAnalyst.serviceAccount.annotations | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-analyst
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: ai-analyst
+    app.kubernetes.io/part-of: ai-sre-analyst
+spec:
+  replicas: {{ .Values.aiAnalyst.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-analyst
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-analyst
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ .Values.aiAnalyst.serviceAccount.name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ai-analyst
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.aiAnalyst.image.repository }}:{{ .Values.aiAnalyst.image.tag }}"
+          imagePullPolicy: {{ .Values.aiAnalyst.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: GCP_PROJECT
+              value: "{{ .Values.global.gcpProject }}"
+            - name: GCP_LOCATION
+              value: "{{ .Values.global.gcpLocation }}"
+            - name: GEMINI_MODEL
+              value: "{{ .Values.aiAnalyst.env.geminiModel }}"
+            - name: REDIS_URL
+              value: "redis://redis.{{ .Release.Namespace }}.svc.cluster.local:6379/0"
+            - name: QDRANT_URL
+              value: "http://qdrant.{{ .Release.Namespace }}.svc.cluster.local:6333"
+            - name: QDRANT_COLLECTION
+              value: "{{ .Values.aiAnalyst.env.qdrantCollection }}"
+            - name: AUDIT_BUCKET
+              value: "{{ .Values.aiAnalyst.env.auditBucket }}"
+            - name: DAILY_TOKEN_BUDGET
+              value: "{{ .Values.aiAnalyst.env.dailyTokenBudget }}"
+            - name: INCIDENT_STORE
+              value: "{{ .Values.aiAnalyst.env.incidentStore }}"
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slack.webhookUrlSecretRef.name }}
+                  key: {{ .Values.slack.webhookUrlSecretRef.key }}
+                  optional: true
+          resources:
+            {{- toYaml .Values.aiAnalyst.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-analyst
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: {{ .Values.aiAnalyst.service.type }}
+  selector:
+    app.kubernetes.io/name: ai-analyst
+  ports:
+    - name: http
+      port: {{ .Values.aiAnalyst.service.port }}
+      targetPort: http
+{{- if .Values.aiAnalyst.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-analyst
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-analyst
+  minReplicas: {{ .Values.aiAnalyst.hpa.minReplicas }}
+  maxReplicas: {{ .Values.aiAnalyst.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.aiAnalyst.hpa.targetCPU }}
+{{- end }}

@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(255,181,71,0.08), transparent 60%),
+      radial-gradient(900px 500px at 0% 110%, rgba(92,225,163,0.05), transparent 60%),
+      #0a0b0d;
+    background-attachment: fixed;
+  }
+
+  /* Subtle grid */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 64px 64px;
+    pointer-events: none;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+    z-index: 0;
+  }
+
+  main { position: relative; z-index: 1; }
+}
+
+@layer components {
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono uppercase tracking-wider border;
+  }
+  .pill-ok   { @apply pill border-signal-ok/30 bg-signal-ok/10 text-signal-ok; }
+  .pill-warn { @apply pill border-signal-warn/30 bg-signal-warn/10 text-signal-warn; }
+  .pill-crit { @apply pill border-signal-crit/30 bg-signal-crit/10 text-signal-crit; }
+
+  .card {
+    @apply bg-ink-900/70 backdrop-blur-sm border border-ink-700 rounded-2xl;
+  }
+}
+
+/* Pulse for live indicator */
+@keyframes live-pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%     { opacity: 0.55; transform: scale(0.8); }
+}
+.live-dot { animation: live-pulse 1.6s ease-in-out infinite; }

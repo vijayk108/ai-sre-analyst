@@ -1,0 +1,89 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-sre-inference
+  namespace: {{ .Release.Namespace }}
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: inference.rules
+      interval: 30s
+      rules:
+        - alert: InferenceTTFTHigh
+          expr: |
+            histogram_quantile(0.95,
+              sum by (service, le) (rate(inference_time_to_first_token_seconds_bucket[2m]))
+            ) > 1.0
+          for: 2m
+          labels:
+            severity: warning
+            component: inference
+          annotations:
+            summary: "p95 TTFT >1s on {{ "{{" }} $labels.service {{ "}}" }}"
+            description: |
+              Time-to-first-token p95 for {{ "{{" }} $labels.service {{ "}}" }} has been
+              above 1 second for 2 minutes. Check KV-cache saturation,
+              batching collapse, or recent model rollouts.
+
+        - alert: InferenceErrorRateHigh
+          expr: |
+            sum by (service) (rate(inference_requests_total{status="failed"}[5m]))
+              /
+            sum by (service) (rate(inference_requests_total[5m]))
+              > 0.05
+          for: 3m
+          labels:
+            severity: critical
+            component: inference
+          annotations:
+            summary: "Inference error rate >5% on {{ "{{" }} $labels.service {{ "}}" }}"
+            description: |
+              Failed inference ratio above 5% for 3m. Common causes:
+              GPU OOM, model server crash, upstream provider outage.
+
+        - alert: InferenceCostSpike
+          expr: |
+            sum by (service) (rate(inference_tokens_out_total[5m]))
+              >
+            2 * avg_over_time(
+              sum by (service) (rate(inference_tokens_out_total[5m]))[2h:5m]
+            )
+          for: 5m
+          labels:
+            severity: warning
+            component: inference
+          annotations:
+            summary: "Output token rate 2x baseline on {{ "{{" }} $labels.service {{ "}}" }}"
+            description: |
+              Completion-token throughput is more than double the
+              two-hour baseline. Likely an agent loop, missing
+              max_tokens, or prompt-template change emitting longer
+              outputs. Cost will compound — investigate immediately.
+
+        - alert: GPUMemoryPressure
+          expr: gpu_memory_pressure_ratio > 0.85
+          for: 2m
+          labels:
+            severity: warning
+            component: inference
+          annotations:
+            summary: "GPU memory pressure >85% on {{ "{{" }} $labels.service {{ "}}" }}"
+            description: |
+              GPU memory pressure has been above 85% for 2 minutes.
+              CUDA OOM is likely if the trend continues. Check for
+              KV-cache leaks, oversized batch_size, or model not
+              unloading on rollover.
+
+        - alert: KVCacheSaturated
+          expr: kv_cache_usage_ratio > 0.9
+          for: 1m
+          labels:
+            severity: warning
+            component: inference
+          annotations:
+            summary: "KV cache >90% on {{ "{{" }} $labels.service {{ "}}" }}"
+            description: |
+              KV cache fill ratio above 90%. New requests will
+              evict in-flight context, degrading TTFT and quality.
+              Reduce max_concurrent_requests or scale replicas.

@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: ai-analyst-webhook
+  namespace: {{ .Release.Namespace }}
+spec:
+  route:
+    receiver: ai-analyst
+    groupBy: [alertname, namespace]
+    groupWait: 10s
+    groupInterval: 30s
+    repeatInterval: 1h
+  receivers:
+    - name: ai-analyst
+      webhookConfigs:
+        - url: {{ .Values.prometheus.alertmanager.webhookUrl | quote }}
+          sendResolved: true

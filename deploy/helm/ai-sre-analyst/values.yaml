@@ -1,0 +1,106 @@
+# Default values for the ai-sre-analyst chart.
+# Override per-environment via `helm install -f values-prod.yaml`.
+
+global:
+  gcpProject: "REPLACE_ME"
+  gcpLocation: "us-central1"
+  imageRegistry: "us-central1-docker.pkg.dev/REPLACE_ME/ai-sre-analyst"
+
+aiAnalyst:
+  replicaCount: 2
+  image:
+    repository: ai-analyst
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  env:
+    geminiModel: "gemini-2.5-flash"
+    qdrantCollection: "runbooks"
+    auditBucket: "REPLACE_ME-ai-sre-audit"
+    # Cost guard: severity-tiered LLM dispatch + daily token budget.
+    # P3 = summary-only, P2 = LLM no-RAG, P1 = full RAG + LLM.
+    # When daily usage crosses 80% of the budget we degrade P2 to
+    # summary-only; at 100% we degrade P1 too.
+    dailyTokenBudget: "1000000"
+    # Incident state store. "firestore" for production, "memory" for
+    # local dev / CI without Firestore credentials.
+    incidentStore: "firestore"
+  serviceAccount:
+    name: ai-analyst-sa
+    annotations:
+      iam.gke.io/gcp-service-account: "ai-analyst@REPLACE_ME.iam.gserviceaccount.com"
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPU: 70
+
+qdrant:
+  enabled: true
+  image: "qdrant/qdrant:v1.12.4"
+  persistence:
+    size: "10Gi"
+    storageClass: "standard-rwo"
+
+redis:
+  enabled: true
+  image: "redis:7.4-alpine"
+  persistence:
+    size: "1Gi"
+
+dashboard:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: dashboard
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+# Four heterogeneous AI workloads, each scripted to misbehave in a
+# different way ~3 minutes after boot. Embeddings stays healthy as a
+# control so the dashboard has visible contrast.
+mockInference:
+  enabled: true
+  image:
+    repository: mock-inference-svc
+    tag: "1.0.0"
+  workloads:
+    - name: inference-chat
+      kind: chat
+      model: gemma-7b-it
+      incidentMode: ttft_spike       # KV-cache pressure → TTFT degrades
+    - name: inference-embed
+      kind: embed
+      model: text-embedding-005
+      incidentMode: none             # healthy control
+    - name: inference-agents
+      kind: agents
+      model: gemini-2.5-flash
+      incidentMode: cost_runaway     # output tokens explode
+    - name: inference-canary
+      kind: canary
+      model: gemma-7b-it-v2
+      incidentMode: gpu_pressure     # GPU memory climbs to OOM
+
+prometheus:
+  alertmanager:
+    webhookUrl: "http://ai-analyst.ai-sre.svc.cluster.local:8080/v1/alerts"
+
+slack:
+  webhookUrlSecretRef:
+    name: slack-webhook
+    key: url
+
+# Production hardening — disable for local kind/minikube where the CNI
+# may not enforce policies, enable for GKE Dataplane V2 / Calico.
+networkPolicy:
+  enabled: true

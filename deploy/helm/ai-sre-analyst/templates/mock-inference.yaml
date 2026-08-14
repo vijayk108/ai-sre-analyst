@@ -1,0 +1,64 @@
+{{- if .Values.mockInference.enabled }}
+{{- range .Values.mockInference.workloads }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .name }}
+  labels:
+    aisre.target: "true"
+    workload.kind: {{ .kind | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference
+  namespace: {{ .name }}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: inference }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inference
+        service: inference
+        model: {{ .model | quote }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: inference
+          image: "{{ $.Values.global.imageRegistry }}/{{ $.Values.mockInference.image.repository }}:{{ $.Values.mockInference.image.tag }}"
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            - { name: SERVICE_NAME,        value: {{ .name | quote }} }
+            - { name: WORKLOAD_KIND,       value: {{ .kind | quote }} }
+            - { name: MODEL_NAME,          value: {{ .model | quote }} }
+            - { name: INCIDENT_MODE,       value: {{ .incidentMode | quote }} }
+            - { name: INCIDENT_AT_SECONDS, value: "180" }
+          resources:
+            requests: { cpu: "150m", memory: "192Mi" }
+            limits:   { cpu: "750m", memory: "384Mi" }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference
+  namespace: {{ .name }}
+  labels:
+    app.kubernetes.io/name: inference
+spec:
+  selector: { app.kubernetes.io/name: inference }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+{{- end }}
+{{- end }}
