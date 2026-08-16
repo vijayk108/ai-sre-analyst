@@ -45,7 +45,7 @@ from app.models import (
 )
 from app.notifier import Notifier
 from app.review_queue import ReviewQueue
-from app.signals import DeploymentCollector, EventCollector, LogCollector
+from app.signals import DeploymentCollector, EventCollector, make_log_collector
 from app.timeline import TimelineBuilder
 from app.vectorstore import RunbookStore
 
@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
     app.state.timeline = TimelineBuilder(
         events=EventCollector(),
         deployments=DeploymentCollector(),
-        logs=LogCollector(project=project),
+        logs=make_log_collector(project=project),
     )
     app.state.notifier = Notifier(
         slack_webhook=os.getenv("SLACK_WEBHOOK_URL"),

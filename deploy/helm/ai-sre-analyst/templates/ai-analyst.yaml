@@ -60,6 +60,16 @@ spec:
               value: "{{ .Values.aiAnalyst.env.dailyTokenBudget }}"
             - name: INCIDENT_STORE
               value: "{{ .Values.aiAnalyst.env.incidentStore }}"
+            - name: LOG_BACKEND
+              value: "{{ .Values.aiAnalyst.env.logBackend }}"
+            {{- if eq .Values.aiAnalyst.env.logBackend "loki" }}
+            - name: LOKI_URL
+              value: "{{ .Values.aiAnalyst.env.lokiUrl }}"
+            {{- if .Values.aiAnalyst.env.lokiTenant }}
+            - name: LOKI_TENANT
+              value: "{{ .Values.aiAnalyst.env.lokiTenant }}"
+            {{- end }}
+            {{- end }}
             - name: SLACK_WEBHOOK_URL
               valueFrom:
                 secretKeyRef:
@@ -85,6 +95,12 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

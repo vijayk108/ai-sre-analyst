@@ -33,9 +33,13 @@ echo ">> 3. Configuring Docker auth for Artifact Registry"
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
 echo ">> 4. Building and pushing service images"
+# --platform linux/amd64 is REQUIRED on Apple Silicon Macs — GKE nodes are
+# x86 and pods crash with `exec format error` if we push arm64 images.
+BUILD_PLATFORM="${BUILD_PLATFORM:-linux/amd64}"
 for svc in ai-analyst mock-inference-svc kb-loader dashboard; do
-  echo "   - $svc"
-  docker build -f "services/${svc}/Dockerfile" -t "${REGISTRY}/${svc}:1.0.0" .
+  echo "   - $svc ($BUILD_PLATFORM)"
+  docker build --platform "$BUILD_PLATFORM" \
+    -f "services/${svc}/Dockerfile" -t "${REGISTRY}/${svc}:1.0.0" .
   docker push "${REGISTRY}/${svc}:1.0.0"
 done
 

@@ -34,6 +34,16 @@ aiAnalyst:
     # Incident state store. "firestore" for production, "memory" for
     # local dev / CI without Firestore credentials.
     incidentStore: "firestore"
+    # Log signal backend. "cloud_logging" (default, needs GCP), "loki"
+    # (needs lokiUrl), or "none" (disable log signal — analyst still
+    # boots and does tier-1 rules and event/deploy correlation).
+    logBackend: "cloud_logging"
+    # Only used when logBackend=loki. Example values:
+    #   in-cluster Grafana: http://loki.monitoring.svc.cluster.local:3100
+    #   Grafana Cloud:      https://logs-prod-<region>.grafana.net
+    lokiUrl: ""
+    # Multi-tenant Loki / Grafana Cloud requires a tenant id (X-Scope-OrgID).
+    lokiTenant: ""
   serviceAccount:
     name: ai-analyst-sa
     annotations:

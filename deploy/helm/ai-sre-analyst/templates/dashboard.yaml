@@ -25,6 +25,11 @@ spec:
           env:
             - name: ANALYST_URL
               value: "http://ai-analyst.{{ .Release.Namespace }}.svc.cluster.local:8080"
+            # Next.js standalone binds to $HOSTNAME. K8s sets HOSTNAME to the
+            # pod name, which the server can't reach from the kubelet's probe
+            # (probe hits pod IP directly). Bind to 0.0.0.0 so probes pass.
+            - name: HOSTNAME
+              value: "0.0.0.0"
           resources:
             requests: { cpu: "100m", memory: "256Mi" }
             limits:   { cpu: "500m", memory: "512Mi" }
