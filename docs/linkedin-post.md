@@ -1,76 +1,173 @@
 # LinkedIn post — variants
 
-Three lengths to choose from. The medium one is probably the safest default for a portfolio post; the long one is for if you want to publish it as a LinkedIn article. Replace `[YOUR-REPO]` with your GitHub URL before posting.
+Three lengths. Medium is the safest default for a portfolio feed post.
+The long one works as a LinkedIn article; the short one is the
+X / Threads / Bluesky cross-post.
 
-Attach `docs/architecture.svg` (or a PNG export of it) to whichever variant you pick.
+Replace `[YOUR-REPO]` with the GitHub URL before posting. Attach
+`docs/architecture.svg` (or a PNG export) to the medium and long
+variants — LinkedIn rewards image attachments, and the diagram is the
+most-clickable artifact.
 
 ---
 
-## Short (the hook — 60 words)
+## Short (X / Threads / Bluesky · ~60 words)
 
-v1 of my AI SRE analyst summarized alerts. v2 investigates incidents.
+TTFT under KV cache pressure. Output tokens exploding in an agent
+recursion loop. GPU pressure on a canary until batched decode
+collapses. None of these show up on a normal Kubernetes dashboard.
 
-It now builds a per-incident timeline by merging Kubernetes Events, recent Deployments, and error logs in parallel — then asks Gemini to produce an evidence-cited verdict where every claim must reference a specific timeline event.
-
-Hallucinated SRE advice, gone by construction.
+I built an AI SRE analyst for this class of incident. Every LLM
+claim must cite a specific timeline event. Structured routing diffs,
+not prose. Shadow-confidence check on P1s.
 
 → [YOUR-REPO]
 
 ---
 
-## Medium (the default — ~210 words)
+## Medium (LinkedIn feed · ~340 words · the default)
 
-Shipped v2 of my AI SRE analyst this week. v1 summarized alerts. v2 investigates incidents.
+TTFT degradation under KV cache pressure. Output tokens exploding in
+an agent recursion loop. GPU memory ramping on a canary until batched
+decode collapses. None of these show up on a normal Kubernetes
+dashboard.
 
-The unlock: the LLM no longer reasons about an isolated Prometheus alert. It reasons about a per-incident *timeline* — the alert plus everything that preceded it within the hour.
+I built an AI SRE analyst for exactly this class of incident.
+Alertmanager webhook → Redis dedup + 90s cross-namespace correlation
+→ per-incident timeline merged in parallel from K8s Events, recent
+Deployments, and Cloud Logs → cost-guarded dispatch to deterministic
+tier-1 rules or Gemini 2.5 Flash with RAG over Qdrant runbooks →
+structured evidence-cited verdict fanned out to Slack, a Next.js
+dashboard, and a versioned GCS audit log. Median alert-to-verdict:
+~1.4s.
 
-Per incident the analyst now collects, in parallel:
-- Kubernetes Events (live, ~50ms — catches CrashLoopBackOff, ImagePullBackOff, FailedScheduling, OOMKill before tier-1 even needs to think)
-- Recent Deployment + ReplicaSet rollouts (live — recent deploys are the highest-prior root cause for almost every non-trivial alert)
-- Cloud Logging error entries (async, TTL-cached — bulky, so we don't block on them)
+Design bets I'll defend in code review:
 
-Those merge into one chronological view. Pre-alert events get scored by causal plausibility (recency × severity × source weight). The LLM gets a ranked haystack, not a wall of context.
+**The LLM reasons about timelines, not isolated alerts.** Every claim
+in `probable_cause` must cite a specific timeline event or runbook
+chunk. Hallucinated SRE advice is out by construction — the JSON
+schema forces it.
 
-The verdict schema changed too: `probable_cause`, `confidence`, and an `evidence` array where every claim must cite a specific timeline event or runbook title. Hallucinated SRE advice is out by construction — Gemini cannot reference evidence that wasn't in the input.
+**Verdicts include structured routing recommendations.** Not "lower
+max_tokens" as prose. `{parameter: "max_tokens", current_value:
+"8192", recommended_value: "1024", reason: "output rate 8.7×
+baseline"}` as a typed diff. Machines can act on it; humans review it
+in one glance.
 
-Stack: GKE Autopilot · Vertex AI Gemini 2.5 Flash · Qdrant · Redis · Prometheus · Kubernetes API · Cloud Logging · Helm · Terraform.
+**Shadow-confidence check on P1s.** Gemini doesn't expose per-token
+logprobs, so I can't measure verdict trust directly. Each P1 goes
+through OpenAI gpt-4o-mini in parallel — its geometric-mean
+per-token probability becomes a trust score on the incident. Under
+40%, the verdict is flagged for human review before Slack fan-out.
+~$0.0002 per P1 alert.
 
-Repo + Helm chart + architecture diagram → [YOUR-REPO]
+**Curated feedback, not auto-embed.** SRE corrections go to a review
+queue, not straight into Qdrant. A 3am typo can't poison the KB.
 
----
+Provider-neutral by design: Cloud Logging ↔ Loki is a one-env-var
+flip (the collector sits behind a Protocol); Firestore ↔ Postgres
+and Vertex AI ↔ Bedrock are file-level swaps.
 
-## Long (article-style — ~510 words)
-
-**An AI SRE Analyst for LLM serving infrastructure — end to end on GCP**
-
-I built a portfolio project this week that I'm actually proud of. The pitch: an AI that watches your AI. The design choices are interesting enough that I wanted to write them up rather than just drop a repo link.
-
-**The premise.** LLM serving has failure modes that don't show up cleanly on a generic Kubernetes dashboard. Time-to-first-token degrades under KV cache pressure, and your customers feel "frozen" UI long before any latency alert fires. Output tokens explode in an agent loop, and the cost graph compounds quietly until someone notices a $40k bill on Monday morning. A canary model release inflates GPU memory just enough that batched decode collapses, taking the chat workload down with it. None of these are CPU spikes you'd page on with a normal SRE setup.
-
-**The pipeline.** Alerts arrive at a FastAPI webhook. The first thing it does is dedup — identical fingerprints get suppressed for five minutes via Redis. Then it correlates: every alert is also dropped onto a sliding ZSET so the analyst sees what else is on fire across workloads in the last 90 seconds, which is how cross-namespace cascades get caught (canary release → chat KV pressure → agents retry storm; one root cause, three alerts). Boring shapes (`GPUMemoryPressure` heading to OOM, `KVCacheSaturated`) get handled by a tier-1 rule engine — no LLM call needed, no token spend, sub-second response.
-
-For everything else, the analyst embeds the alert into a 768-dim vector with Vertex AI `text-embedding-005`, fetches the top-4 most relevant runbook chunks from Qdrant, and assembles a structured prompt for `gemini-2.5-flash`. Gemini is asked to return JSON conforming to a strict schema (`root_cause`, `confidence`, `blast_radius`, `remediation_steps`), so the consumers — Slack, the Next.js dashboard, the GCS audit log — are type-safe end-to-end and the system can fail closed if the model returns garbage.
-
-The Slack message has `✓ Correct` / `✏ Correct it` buttons. When an SRE submits a correction, that text is embedded and upserted back into Qdrant. The next time a similar alert fires, the corrected guidance shows up as runbook context. Closed-loop learning, mechanically simple.
-
-**Why GCP.** GKE Autopilot for compute (no node management, pay per pod), Vertex AI for the model surface, Workload Identity to keep static creds out of pods, GCS with versioning and retention-locking for the audit bucket so it's compliant for AI-driven action review. Terraform provisions all of it; Helm installs the chart.
-
-**The demo.** Four heterogeneous mock inference workloads run with scripted failure modes — TTFT spike on chat, cost runaway on agents, GPU pressure on canary, and a healthy embeddings workload as control. Three minutes after install they start misbehaving on schedule, so a screen recording reproduces predictably without depending on real traffic.
-
-**What I'd build next.** A tier-2 ML classifier between the rules and the LLM. Cost-aware routing recommendations (when output rate spikes, suggest concrete `max_tokens` changes that would land you back at baseline). Auto-remediation with human approval, gated by org policy.
-
-Stack: GKE Autopilot · Vertex AI Gemini 2.5 Flash · Qdrant · Redis · Prometheus · FastAPI · Next.js · Helm · Terraform.
+Deployed to GKE Autopilot via Terraform + Helm.
 
 Code, chart, and architecture diagram → [YOUR-REPO]
 
-#GenAI #LLMOps #AIInfra #Kubernetes #SRE #GCP #Observability
+Stack: GKE Autopilot · Vertex AI Gemini 2.5 Flash · OpenAI
+gpt-4o-mini · Qdrant · Redis · Prometheus · FastAPI · Next.js · Helm
+· Terraform.
 
 ---
 
-## Tips
+## Long (LinkedIn article · ~600 words)
 
-- Ship the **medium** variant by default with the architecture image attached. LinkedIn rewards posts with images, and the architecture diagram is the most clickable artifact you have.
-- The **long** variant works as a LinkedIn article (the long-form publishing surface), not as a feed post — feed posts get truncated past ~3 lines.
-- The **short** variant is for the X/Threads/Bluesky cross-post if you want one. The "AI watching your AI" hook outperforms the literal description in casual feeds.
-- Lead the medium and long variants with the failure-mode list (TTFT, cost runaway, GPU pressure). That's the differentiator from generic K8s/SRE portfolio pieces and the part recruiters in AI-infra roles will recognize.
-- Pin the post to your profile while you're job hunting. It's a better landing page than a résumé link.
+**An AI SRE analyst for LLM serving infrastructure — end to end on GCP**
+
+LLM serving has failure modes that a generic Kubernetes dashboard is
+blind to. TTFT climbs under KV cache pressure and customers feel a
+frozen UI long before any latency alert fires. Output tokens explode
+in an agent recursion loop and finance flags a $40k weekend bill on
+Monday. GPU memory ramps quietly during a canary release until
+batched decode collapses and takes chat down with it. None of these
+are CPU spikes you'd page on with a normal SRE setup.
+
+I built an analyst for this class of incident and shipped it to real
+GKE Autopilot this week.
+
+**The pipeline.** An alert arrives at a FastAPI webhook. Redis dedup
+suppresses identical fingerprints for five minutes. Every alert also
+drops onto a 90-second sliding ZSET so the analyst sees what else is
+on fire cross-namespace (canary release → chat KV pressure → agents
+retry storm; one root cause, three alerts). A cost guard decides
+severity tier. Boring shapes — OOMKilled, CrashLoopBackOff,
+ImagePullBackOff, FailedScheduling — get handled by deterministic
+rules with no LLM call. Everything else goes to Gemini 2.5 Flash
+with a top-4 RAG pull from Qdrant runbooks. Median alert-to-verdict:
+~1.4 seconds.
+
+**What makes the verdict useful.** Every claim in the JSON
+`probable_cause` must cite a specific timeline event or runbook
+chunk. Not "the deployment probably caused it" — "ReplicaSet
+inference-66d9674f76 created at 18:39:12 (source: k8s-events,
+weight: 0.9)". Hallucinated SRE advice is out by construction because
+the model literally cannot reference evidence that wasn't in its
+input.
+
+**Routing recommendations, structured.** When the timeline has enough
+signal, the verdict includes a typed config diff:
+`{parameter: "max_tokens", current_value: "8192", recommended_value:
+"1024", reason: "output rate is 8.7× baseline"}`. Machines can act
+on it; humans review it at a glance. Beats the usual "consider tuning
+max_tokens" prose that shows up in AI-summary tools.
+
+**Trust score on P1s.** Gemini doesn't expose per-token logprobs, so
+I can't measure how confident it really was. Every P1 verdict gets a
+shadow inference through OpenAI gpt-4o-mini running in parallel — its
+geometric-mean per-token probability becomes a trust score attached
+to the incident. Under 40% and the verdict is flagged "human review
+needed" before Slack fan-out. ~$0.0002 per P1 alert. This is what
+makes AI-suggested remediation defensible as more than a demo.
+
+**Curated feedback, not auto-embed.** When an SRE clicks "Correct
+it" on the Slack card, the correction goes to a review queue, not
+straight into Qdrant. A 3am typo can't poison the KB.
+
+**Not GCP-only.** Cloud Logging is a one-env-var flip to Loki; the
+log collector sits behind a `typing.Protocol` with three concrete
+implementations (Cloud Logging, Loki, Noop). Firestore ↔ Postgres and
+Vertex AI ↔ Bedrock or Azure OpenAI are file-level swaps — the
+pipeline logic is provider-neutral by design. Terraform provisions
+GKE Autopilot + IAM + Artifact Registry + a versioned audit bucket;
+Helm installs the analyst, mock inference workloads, Qdrant, and
+Prometheus.
+
+**Not shipped yet:** OpenTelemetry span ingest into the timeline, and
+a tier-2 ML classifier between rules and the LLM. Both are follow-ups;
+the current cut is enough to talk about.
+
+Code, Helm chart, Terraform, architecture diagram → [YOUR-REPO]
+
+Stack: GKE Autopilot · Vertex AI Gemini 2.5 Flash · OpenAI
+gpt-4o-mini · Qdrant · Redis · Prometheus · FastAPI · Next.js · Helm
+· Terraform.
+
+---
+
+## Posting tips
+
+- **Ship the medium variant by default**, with the architecture image
+  attached. LinkedIn rewards posts with images.
+- **The long variant works as a LinkedIn article**, not a feed post —
+  feed posts get truncated past ~3 lines.
+- **The short variant** is for X / Threads / Bluesky. The specific
+  symptoms (TTFT, KV cache, agent recursion) beat generic "AI
+  watching AI" framing on those platforms.
+- **Lead with the failure-mode list.** That's the differentiator from
+  generic K8s/SRE portfolio pieces and the part recruiters in
+  AI-infra roles will recognize.
+- **Best window**: Tuesday–Thursday, 8–10am your timezone. LinkedIn's
+  engineering audience is at their desk.
+- **Consider adding one screenshot** alongside the architecture SVG:
+  the expanded incident card with the RoutingBlock is the single most
+  compelling visual you have.
+- **Pin the post** to your profile while you're job-hunting. It's a
+  better landing page than a résumé link.
