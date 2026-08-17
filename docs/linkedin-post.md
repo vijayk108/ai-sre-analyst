@@ -4,8 +4,8 @@ Three lengths. Medium is the safest default for a portfolio feed post.
 The long one works as a LinkedIn article; the short one is the
 X / Threads / Bluesky cross-post.
 
-Replace `[YOUR-REPO]` with the GitHub URL before posting. Attach
-`docs/architecture.svg` (or a PNG export) to the medium and long
+Repo URL is already filled in throughout: https://github.com/vijayk108/ai-sre-analyst.
+Attach `docs/architecture.svg` (or a PNG export) to the medium and long
 variants — LinkedIn rewards image attachments, and the diagram is the
 most-clickable artifact.
 
@@ -21,7 +21,7 @@ I built an AI SRE analyst for this class of incident. Every LLM
 claim must cite a specific timeline event. Structured routing diffs,
 not prose. Shadow-confidence check on P1s.
 
-→ [YOUR-REPO]
+→ https://github.com/vijayk108/ai-sre-analyst
 
 ---
 
@@ -70,7 +70,7 @@ and Vertex AI ↔ Bedrock are file-level swaps.
 
 Deployed to GKE Autopilot via Terraform + Helm.
 
-Code, chart, and architecture diagram → [YOUR-REPO]
+Code, chart, and architecture diagram → https://github.com/vijayk108/ai-sre-analyst
 
 Stack: GKE Autopilot · Vertex AI Gemini 2.5 Flash · OpenAI
 gpt-4o-mini · Qdrant · Redis · Prometheus · FastAPI · Next.js · Helm
@@ -144,7 +144,7 @@ Prometheus.
 a tier-2 ML classifier between rules and the LLM. Both are follow-ups;
 the current cut is enough to talk about.
 
-Code, Helm chart, Terraform, architecture diagram → [YOUR-REPO]
+Code, Helm chart, Terraform, architecture diagram → https://github.com/vijayk108/ai-sre-analyst
 
 Stack: GKE Autopilot · Vertex AI Gemini 2.5 Flash · OpenAI
 gpt-4o-mini · Qdrant · Redis · Prometheus · FastAPI · Next.js · Helm
