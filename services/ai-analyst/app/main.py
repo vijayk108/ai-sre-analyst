@@ -21,6 +21,7 @@ Feedback loop now goes through a review queue:
     POST /v1/lessons/{id}/reject       → reject with reason
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -45,6 +46,11 @@ from app.models import (
 )
 from app.notifier import Notifier
 from app.review_queue import ReviewQueue
+from app.shadow_confidence import (
+    ShadowConfidenceChecker,
+    maybe_run_shadow,
+    should_shadow,
+)
 from app.signals import DeploymentCollector, EventCollector, make_log_collector
 from app.timeline import TimelineBuilder
 from app.vectorstore import RunbookStore
@@ -120,6 +126,12 @@ async def lifespan(app: FastAPI):
     )
     app.state.incidents = IncidentStore(project=project)
     app.state.lessons = ReviewQueue(project=project)
+    # Shadow-confidence checker: opt-in via SHADOW_CONFIDENCE_ENABLED,
+    # only fires on P1/critical alerts (see shadow_confidence.should_shadow).
+    # None if OPENAI_API_KEY is unset or openai package is missing.
+    app.state.shadow = (
+        ShadowConfidenceChecker() if os.getenv("SHADOW_CONFIDENCE_ENABLED", "").lower() in ("1", "true", "yes") else None
+    )
 
     await app.state.dedup.connect()
     await app.state.cost_guard.connect()
@@ -223,6 +235,18 @@ async def receive_alerts(payload: AlertmanagerPayload, request: Request):
 
         await _publish(verdict, s)
         results.append(verdict)
+
+        # Shadow-confidence check — fire-and-forget so fan-out isn't blocked.
+        # Only runs when SHADOW_CONFIDENCE_ENABLED and severity is P1/critical.
+        if s.shadow and should_shadow(alert):
+            asyncio.create_task(maybe_run_shadow(
+                checker=s.shadow,
+                alert=alert,
+                timeline=timeline,
+                runbook_context=runbook_ctx,
+                primary=verdict,
+                attach=s.incidents.attach_shadow,
+            ))
 
     return results
 

@@ -126,6 +126,29 @@ class AnalysisResult(BaseModel):
     model: str
 
 
+class ShadowResult(BaseModel):
+    """A second-model confidence check attached to a verdict post-facto.
+
+    Gemini doesn't expose per-token logprobs, so we can't measure the
+    trust of its verdicts directly. We route P1 alerts through a
+    secondary logprob-enabled model (OpenAI GPT-4o-mini) on the same
+    evidence and use ITS geometric-mean per-token probability as a
+    proxy signal: if the shadow model hedges on the same context,
+    treat the primary verdict with more suspicion.
+
+    This is a *signal*, not a source of truth. A low shadow score
+    means "human, please look" — not "the verdict is wrong."
+    """
+
+    model: str                              # shadow model id, e.g. gpt-4o-mini
+    geometric_mean_p: float = Field(ge=0.0, le=1.0)
+    n_tokens: int
+    n_low_conf_tokens: int                  # tokens with p < 0.3
+    trust_signal: Literal["high", "medium", "low"]
+    summary_text: str                       # what the shadow model actually said
+    generated_at: datetime
+
+
 class FeedbackPayload(BaseModel):
     incident_id: str
     was_correct: bool

@@ -76,6 +76,16 @@ spec:
                   name: {{ .Values.slack.webhookUrlSecretRef.name }}
                   key: {{ .Values.slack.webhookUrlSecretRef.key }}
                   optional: true
+            # Shadow-confidence: opt-in second-model logprob check on P1 alerts.
+            # No effect if OPENAI_API_KEY secret is absent.
+            - name: SHADOW_CONFIDENCE_ENABLED
+              value: "{{ .Values.aiAnalyst.env.shadowEnabled }}"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiAnalyst.env.openaiSecretRef.name }}
+                  key: {{ .Values.aiAnalyst.env.openaiSecretRef.key }}
+                  optional: true
           resources:
             {{- toYaml .Values.aiAnalyst.resources | nindent 12 }}
           readinessProbe:

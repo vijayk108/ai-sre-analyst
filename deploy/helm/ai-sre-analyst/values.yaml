@@ -44,6 +44,15 @@ aiAnalyst:
     lokiUrl: ""
     # Multi-tenant Loki / Grafana Cloud requires a tenant id (X-Scope-OrgID).
     lokiTenant: ""
+    # Shadow-confidence check on P1 alerts (uses OpenAI logprobs to sanity-
+    # check Gemini verdicts). Requires an "openai-api-key" secret with a
+    # key "api-key" — create with:
+    #   kubectl -n ai-sre create secret generic openai-api-key \
+    #     --from-literal=api-key=sk-...
+    shadowEnabled: "false"
+    openaiSecretRef:
+      name: "openai-api-key"
+      key: "api-key"
   serviceAccount:
     name: ai-analyst-sa
     annotations:

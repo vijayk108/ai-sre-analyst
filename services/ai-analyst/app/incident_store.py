@@ -34,7 +34,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from app.models import AnalysisResult, FeedbackPayload
+from app.models import AnalysisResult, FeedbackPayload, ShadowResult
 
 log = logging.getLogger("ai-analyst.incident_store")
 
@@ -119,6 +119,27 @@ class IncidentStore:
             if not inc:
                 return
             inc["feedback"].append(feedback)
+
+    async def attach_shadow(self, incident_id: str, shadow: ShadowResult) -> None:
+        """Attach a shadow-confidence result to an existing incident doc.
+
+        Called from the async shadow task after the primary verdict has
+        already been persisted. No-op if the incident doesn't exist yet
+        (rare race between publish and shadow completion).
+        """
+        payload = shadow.model_dump(mode="json")
+        if self._mode == "firestore":
+            ref = self._client.collection(COLLECTION).document(incident_id)
+            snap = await ref.get()
+            if not snap.exists:
+                log.warning("attach_shadow: unknown incident %s", incident_id)
+                return
+            await ref.update({"shadow_confidence": payload})
+        else:
+            inc = self._memory.get(incident_id)
+            if inc is None:
+                return
+            inc["shadow_confidence"] = payload
 
     async def resolve(self, incident_id: str, resolved_by: str) -> None:
         body = {
