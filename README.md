@@ -185,4 +185,4 @@ Phase 1 (v1) summarized alerts. Phase 2 (v2/v2.1, this version) investigates wit
 
 ---
 
-Built as a portfolio piece. Questions, hire-me-please notes, or "you got the prompt wrong here" PRs all welcome.
+Built as a portfolio piece. Questions,  or "you got the prompt wrong here" PRs all welcome.
